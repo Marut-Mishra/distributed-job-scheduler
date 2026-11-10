@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: scheduler-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/scheduler}
+    username: ${DB_USER:scheduler}
+    password: ${DB_PASSWORD:scheduler}
+  jpa:
+    hibernate:
+      ddl-auto: validate   # schema is owned by Flyway, never by Hibernate
+    open-in-view: false
+  flyway:
+    enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true   # broker de-dupes producer retries within a session
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: record             # commit offset only after the handler returns
+
+server:
+  port: ${PORT:8080}
+
+scheduler:
+  claim:
+    poll-interval-ms: ${CLAIM_POLL_MS:1000}
+    batch-size: ${CLAIM_BATCH:50}
+  outbox:
+    poll-interval-ms: ${OUTBOX_POLL_MS:500}
+  maintenance:
+    poll-interval-ms: ${MAINTENANCE_POLL_MS:1000}
+  lease:
+    duration: ${LEASE_DURATION:30s}   # workers heartbeat every 10s → tolerates 2 missed beats
+  retry:
+    backoff:
+      base: ${RETRY_BASE:2s}
+      cap: ${RETRY_CAP:5m}
+  node-id: ${NODE_ID:${HOSTNAME:local-node}}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

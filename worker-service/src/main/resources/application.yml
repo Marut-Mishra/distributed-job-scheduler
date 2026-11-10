@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: worker-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: workers            # all workers share one group → each run goes to one worker
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 10
+      properties:
+        max.poll.interval.ms: 600000   # > max job timeout (540s); slower handlers would lose their partition
+    listener:
+      ack-mode: record
+      concurrency: ${WORKER_CONCURRENCY:3}
+
+server:
+  port: ${PORT:8081}
+
+worker:
+  id: ${WORKER_ID:${HOSTNAME:worker-local}}
+  heartbeat-interval: ${HEARTBEAT_INTERVAL:10s}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
