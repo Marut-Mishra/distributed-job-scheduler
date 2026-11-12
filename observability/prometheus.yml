@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 5s
+
+# The services run on the host (mvn spring-boot:run); host.docker.internal reaches them
+# from inside the Prometheus container on Docker Desktop (Windows/Mac) and via
+# extra_hosts: host-gateway on Linux (see docker-compose.yml).
+scrape_configs:
+  - job_name: scheduler
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:18080"]
+
+  - job_name: workers
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:18081", "host.docker.internal:18082", "host.docker.internal:18083"]

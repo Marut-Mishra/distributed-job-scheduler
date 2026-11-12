@@ -5,6 +5,7 @@ import dev.marut.scheduler.contracts.RunResult;
 import dev.marut.scheduler.contracts.Topics;
 import dev.marut.scheduler.retry.FailureHandler;
 import dev.marut.scheduler.run.JobRunRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,9 +25,11 @@ public class RunResultListener {
     private final FailureHandler failures;
     private final ObjectMapper json;
     private final Duration lease;
+    private final MeterRegistry metrics;
 
     public RunResultListener(JobRunRepository runs, FailureHandler failures, ObjectMapper json,
-                             @Value("${scheduler.lease.duration:30s}") Duration lease) {
+                             @Value("${scheduler.lease.duration:30s}") Duration lease, MeterRegistry metrics) {
+        this.metrics = metrics;
         this.runs = runs;
         this.failures = failures;
         this.json = json;
@@ -54,6 +57,9 @@ public class RunResultListener {
                 yield 1;
             }
         };
+        if (updated == 1 && r.outcome() == RunResult.Outcome.SUCCEEDED) {
+            metrics.counter("scheduler.runs.succeeded").increment();
+        }
         if (updated == 0) {
             log.debug("Ignored {} for run {} attempt {} (duplicate, out of order, or stale)",
                     r.outcome(), r.runId(), r.attempt());

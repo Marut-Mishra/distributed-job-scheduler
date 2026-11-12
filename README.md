@@ -2,7 +2,7 @@
 
 A horizontally scalable job scheduler built with Java 21 and Spring Boot 3. Run any number of scheduler nodes against one PostgreSQL database; each due occurrence is claimed by exactly one node.
 
-> Status: **slice 3 of 5**: concurrent-safe claiming, a transactional outbox to Kafka, stateless workers, and failure handling (retries with backoff, dead-lettering, leases with heartbeats, fencing, timeouts). Observability and load testing are next.
+> Status: **slice 4 of 5**: concurrent-safe claiming, a transactional outbox to Kafka, stateless workers, full failure handling, and Prometheus/Grafana observability with a reproducible k6 load test. Packaging and deployment are next.
 
 ## Why this exists
 
@@ -84,14 +84,48 @@ two would either block partitions on long backoffs or hide business failures in 
 | Idempotency key on create | Client retries after a timeout don't schedule duplicates | — |
 | Flyway owns the schema, Hibernate `validate` | Schema changes are reviewed, versioned, reproducible | `ddl-auto=update` — silently drifts between environments |
 
+## Observability
+
+`docker compose up -d` also starts **Prometheus** (`:9090`) and **Grafana** (`:3000`, no login). The
+*Distributed Job Scheduler* dashboard is provisioned automatically.
+
+| Panel | Metric | Why it matters |
+|---|---|---|
+| Dispatch lag p50/p95/p99 | `scheduler.dispatch.lag` (histogram) | The scheduler's core SLI: how late are jobs picked up? |
+| Throughput | claimed / succeeded / retried / dead per second | Retries and dead runs climb visibly during failure injection |
+| Outbox backlog | `scheduler.outbox.pending` | First signal that Kafka is down; it should drain to 0 on recovery |
+| Handler p95 by handler | `worker.run.duration` | Separates slow jobs from a slow scheduler |
+| Runs per worker instance | per-instance rate | Shows the Kafka consumer group rebalancing when a worker dies |
+| Consumer lag, heap, DB pool | Kafka client, JVM, Hikari | Where the bottleneck is under load |
+
+## Load testing
+
+`GET /api/v1/stats?since=…` computes pickup and end-to-end latency percentiles, throughput, and
+retry counts **in SQL from `job_runs`**. These are ground-truth numbers across all nodes, unaffected by restarts.
+
+```powershell
+# Windows PowerShell: 100 jobs/s for 2 minutes, each job sleeping 50 ms
+Get-Content loadtest\create-jobs.js | docker run --rm -i -e RATE=100 -e DURATION=2m grafana/k6 run -
+```
+```bash
+# macOS / Linux
+docker run --rm -i --add-host=host.docker.internal:host-gateway -e RATE=100 -e DURATION=2m grafana/k6 run - < loadtest/create-jobs.js
+```
+
+k6 prints the exact `curl …/api/v1/stats?since=…` command to run when it finishes. Results are
+recorded in [`loadtest/RESULTS.md`](loadtest/RESULTS.md), along with the machine, the setup and
+what turned out to be the bottleneck.
+
 ## Run locally
 
 ```bash
 docker compose up -d                                # postgres + kafka
 mvn install -DskipTests                             # builds contracts for the services
 mvn -pl scheduler-service spring-boot:run           # terminal 1
-mvn -pl worker-service spring-boot:run              # terminal 2
+mvn -pl worker-service spring-boot:run              # terminal 2 (port 8081)
 WORKER_ID=w2 PORT=8082 mvn -pl worker-service spring-boot:run   # terminal 3: a second worker
+# Windows PowerShell:  $env:WORKER_ID="w2"; $env:PORT="8082"; mvn -pl worker-service spring-boot:run
+# Grafana: http://localhost:3000   Prometheus targets: http://localhost:9090/targets
 ```
 
 ```bash
@@ -147,5 +181,5 @@ curl localhost:8080/actuator/prometheus | grep scheduler_jobs_claimed
 - [x] **Slice 1** — Job API, Flyway schema, SKIP LOCKED claiming, idempotent create
 - [x] **Slice 2** — Transactional outbox → Kafka; `worker-service` executes runs; idempotent result handling
 - [x] **Slice 3** — Retries with exponential backoff + jitter, dead-lettering + replay, poison-message DLTs, run timeouts, leases + heartbeats, fencing tokens
-- [ ] **Slice 4** — Prometheus + Grafana dashboards, load test with published numbers
+- [x] **Slice 4** — Prometheus + Grafana dashboard (provisioned), dispatch-lag SLI, SQL-backed stats endpoint, k6 load test
 - [ ] **Slice 5** — React dashboard (Vercel), backend deployment, architecture diagram

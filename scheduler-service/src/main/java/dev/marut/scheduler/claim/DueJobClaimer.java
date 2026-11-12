@@ -7,6 +7,9 @@ import dev.marut.scheduler.run.JobRun;
 import dev.marut.scheduler.run.JobRunRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+
+import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -33,6 +36,7 @@ public class DueJobClaimer {
     private final RunDispatcher dispatcher;
     private final ClaimProperties props;
     private final Counter claimed;
+    private final Timer dispatchLag;
 
     public DueJobClaimer(JobRepository jobs, JobRunRepository runs, RunDispatcher dispatcher,
                          ClaimProperties props, MeterRegistry metrics) {
@@ -41,6 +45,11 @@ public class DueJobClaimer {
         this.dispatcher = dispatcher;
         this.props = props;
         this.claimed = Counter.builder("scheduler.jobs.claimed").register(metrics);
+        // How late a run is picked up vs. when it was due: the scheduler's core SLI.
+        this.dispatchLag = Timer.builder("scheduler.dispatch.lag")
+                .description("Time between a run's scheduled time and the scheduler claiming it")
+                .publishPercentileHistogram()
+                .register(metrics);
     }
 
     @Transactional
@@ -50,6 +59,7 @@ public class DueJobClaimer {
             Instant occurrence = job.getNextRunAt();
             JobRun run = runs.save(JobRun.queued(job.getId(), occurrence));
             dispatcher.dispatch(job, run, now);
+            dispatchLag.record(Duration.between(occurrence, now).isNegative() ? Duration.ZERO : Duration.between(occurrence, now));
 
             // Compute from the occurrence (not "now") so a late tick doesn't drift the schedule,
             // but skip past missed occurrences rather than replaying a backlog.

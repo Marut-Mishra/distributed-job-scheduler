@@ -19,7 +19,7 @@ spring:
       concurrency: ${WORKER_CONCURRENCY:3}
 
 server:
-  port: ${PORT:8081}
+  port: ${PORT:18081}
 
 worker:
   id: ${WORKER_ID:${HOSTNAME:worker-local}}
@@ -30,3 +30,9 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        worker.run.duration: true

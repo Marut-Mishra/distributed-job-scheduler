@@ -23,12 +23,6 @@
         <module>worker-service</module>
     </modules>
 
-    <properties>
-        <java.version>21</java.version>
-        <!-- Newer Testcontainers handles Docker Engine 29+ -->
-        <testcontainers.version>1.21.3</testcontainers.version>
-    </properties>
-
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -39,6 +33,11 @@
         </dependencies>
     </dependencyManagement>
 
+    <properties>
+        <java.version>21</java.version>
+        <!-- Newer Testcontainers handles Docker Engine 29+ -->
+        <testcontainers.version>1.21.3</testcontainers.version>
+    </properties>
     <build>
         <pluginManagement>
             <plugins>

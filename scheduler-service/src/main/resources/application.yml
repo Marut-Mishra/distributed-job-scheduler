@@ -24,7 +24,7 @@ spring:
       ack-mode: record             # commit offset only after the handler returns
 
 server:
-  port: ${PORT:8080}
+  port: ${PORT:18080}
 
 scheduler:
   claim:
@@ -47,3 +47,9 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        scheduler.dispatch.lag: true
